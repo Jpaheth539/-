@@ -1,0 +1,84 @@
+import streamlit as st
+import math
+
+# ================= 材料与需求类 =================
+class Material:
+    def __init__(self, thickness, width, length, density=2.71):
+        self.thickness = thickness
+        self.width = width
+        self.length = length
+        self.density = density
+        self.weight_per_sheet = thickness * width * length * density / 1000000
+
+class Requirement:
+    def __init__(self, thickness, width, need_weight):
+        self.thickness = thickness
+        self.width = width
+        self.need_weight = need_weight
+
+# ================= 配刀逻辑 =================
+def optimize_cut(mother, requirements):
+    solutions = []
+    for req in requirements:
+        if abs(req.thickness - mother.thickness) > 1e-6:
+            solutions.append({
+                "厚度(mm)": req.thickness,
+                "需求宽度(mm)": req.width,
+                "需求重量(kg)": req.need_weight,
+                "结果": f"厚度不匹配（母料{mother.thickness} vs 需求{req.thickness}）"
+            })
+            continue
+
+        weight_per_strip = (req.width / mother.width) * mother.weight_per_sheet
+        strips_needed = math.ceil(req.need_weight / weight_per_strip)
+        strips_per_sheet = mother.width // req.width
+        leftover = mother.width - strips_per_sheet * req.width
+
+        if 3 <= leftover <= 5:
+            assigned_weight = strips_needed * weight_per_strip
+            solutions.append({
+                "厚度(mm)": req.thickness,
+                "需求宽度(mm)": req.width,
+                "需求重量(kg)": req.need_weight,
+                "单条重量(kg)": round(weight_per_strip, 3),
+                "所需条数": strips_needed,
+                "满足重量(kg)": round(assigned_weight, 3),
+                "单板可裁条数": int(strips_per_sheet),
+                "母料余边(mm)": int(leftover),
+                "结果": "✅ 可切割"
+            })
+        else:
+            solutions.append({
+                "厚度(mm)": req.thickness,
+                "需求宽度(mm)": req.width,
+                "需求重量(kg)": req.need_weight,
+                "结果": f"❌ 余边{leftover}mm，不在允许范围3-5mm"
+            })
+    return solutions
+
+# ================= 页面 =================
+st.set_page_config(page_title="铝板铝卷配刀计算", page_icon="⚙", layout="wide")
+st.title("⚙ 铝板/铝卷 配刀计算器")
+
+st.sidebar.header("母料参数")
+m_thickness = st.sidebar.number_input("母料厚度 (mm)", value=1.0)
+m_width = st.sidebar.number_input("母料宽度 (mm)", value=1220)
+m_length = st.sidebar.number_input("母料长度 (mm)", value=2440)
+m_density = st.sidebar.number_input("铝材比重", value=2.71)
+
+mother = Material(m_thickness, m_width, m_length, m_density)
+st.write(f"📐 单张母料重量约 **{mother.weight_per_sheet:.2f} kg**")
+
+st.header("📝 需求清单")
+reqs = []
+num_items = st.number_input("需求数量", min_value=1, value=2, step=1)
+for i in range(num_items):
+    with st.expander(f"需求 {i+1}"):
+        r_thk = st.number_input(f"厚度 (需求{i+1}) mm", value=1.0, key=f"thk{i}")
+        r_width = st.number_input(f"宽度 (需求{i+1}) mm", value=305, key=f"wid{i}")
+        r_weight = st.number_input(f"需求重量 (kg) 需求{i+1}", value=500.0, key=f"wt{i}")
+        reqs.append(Requirement(r_thk, r_width, r_weight))
+
+if st.button("开始计算"):
+    result = optimize_cut(mother, reqs)
+    st.dataframe(result, use_container_width=True)
